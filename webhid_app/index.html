@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AGFRC V3 Servo Configurator (WebHID)</title>
+<style>
+  :root {
+    --bg: #121418; --panel: #1c1f26; --panel2: #23272f; --border: #333a45;
+    --text: #e6e9ee; --dim: #9aa3b0; --accent: #4da3ff; --ok: #4caf7d; --err: #e06060;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px; background: var(--bg); color: var(--text);
+    font: 14px/1.5 system-ui, sans-serif;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--dim); margin-bottom: 16px; }
+  .bar {
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 16px; margin-bottom: 16px;
+  }
+  button {
+    background: var(--accent); color: #08131f; border: 0; border-radius: 6px;
+    padding: 8px 16px; font-weight: 600; cursor: pointer;
+  }
+  button.ghost { background: var(--panel2); color: var(--text); border: 1px solid var(--border); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  #status { color: var(--dim); }
+  #status.ok { color: var(--ok); }
+  #status.err { color: var(--err); }
+  fieldset {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 16px 16px; margin: 0 0 16px;
+  }
+  legend { color: var(--dim); padding: 0 6px; }
+  .row { display: flex; align-items: center; gap: 12px; margin: 8px 0; }
+  .row label { width: 180px; flex: none; color: var(--text); }
+  .row input[type=range] { flex: 1; accent-color: var(--accent); }
+  .row input[type=number], .row input[type=text], .row select {
+    width: 90px; background: var(--panel2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px;
+  }
+  .row input[type=text] { width: 120px; }
+  .row select { width: auto; }
+  .row .unit { color: var(--dim); width: 30px; flex: none; }
+  fieldset:disabled { opacity: 0.45; }
+  details { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px 16px; margin-bottom: 16px; }
+  summary { cursor: pointer; color: var(--dim); }
+  code { color: var(--accent); word-break: break-all; }
+  .warn { color: #e0a060; }
+  progress { flex: 1; height: 14px; accent-color: var(--accent); }
+  dt { color: var(--text); font-weight: 600; margin-top: 8px; }
+  dd { margin: 2px 0 0 16px; color: var(--dim); }
+  input[type=file] { color: var(--dim); }
+  #rawdump {
+    width: 100%; margin: 0 0 16px; background: var(--panel); color: var(--dim);
+    border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px;
+    font-family: monospace;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>AGFRC V3 Servo Configurator</h1>
+  <div class="sub">WebHID edition — no backend needed. Servo: <span id="servoName">&mdash;</span> &middot; Model: <span id="modelName">&mdash;</span></div>
+
+  <div class="bar">
+    <button id="btnConnect">Connect</button>
+    <button id="btnRead" class="ghost" disabled>Read</button>
+    <button id="btnWrite" disabled>Write</button>
+    <span id="status">disconnected</span>
+  </div>
+
+  <input type="text" id="rawdump" readonly placeholder="raw bytes — populated after a successful Read">
+
+  <fieldset id="controls" disabled>
+    <legend>Parameters</legend>
+    <div class="row"><label>Travel Range R</label>
+      <input type="range" id="travel_r" min="0" max="255">
+      <input type="number" id="travel_r_n" min="0" max="255"><span class="unit"></span></div>
+    <div class="row"><label>Travel Range L</label>
+      <input type="range" id="travel_l" min="0" max="255">
+      <input type="number" id="travel_l_n" min="0" max="255"><span class="unit"></span></div>
+    <div class="row"><label>Damping Factor</label>
+      <input type="range" id="damping" min="0" max="255">
+      <input type="number" id="damping_n" min="0" max="255"><span class="unit"></span></div>
+    <div class="row"><label>Sensitivity</label>
+      <input type="range" id="sensitivity" min="0" max="255">
+      <input type="number" id="sensitivity_n" min="0" max="255"><span class="unit"></span></div>
+    <div class="row"><label>PWM Power</label>
+      <input type="range" id="pwm" min="0" max="100" step="0.1">
+      <input type="number" id="pwm_n" min="0" max="100" step="0.1"><span class="unit">%</span></div>
+    <div class="row"><label>Soft Start Level</label>
+      <input type="range" id="soft_start" min="0" max="16">
+      <input type="number" id="soft_start_n" min="0" max="16"><span class="unit"></span></div>
+    <div class="row" id="neutralRow" style="display:none"><label>Neutral</label>
+      <input type="range" id="neutral" min="-128" max="127">
+      <input type="number" id="neutral_n" min="-128" max="127"><span class="unit"></span></div>
+    <div class="row" id="nameRow" style="display:none"><label>Servo Name</label>
+      <input type="text" id="servo_name" maxlength="6"><span class="unit"></span></div>
+    <p class="warn" id="b53note" style="display:none">Overload Protection, Lose PPM,
+      Inversion and radio modes are not programmable on this model (ignored by official app).</p>
+  </fieldset>
+
+  <fieldset id="olp" disabled>
+    <legend>Overload Protection</legend>
+    <div class="row"><label>Level 1</label>
+      time <input type="number" id="olp1_time" min="0" max="19.6" step="0.1"><span class="unit">s</span>
+      duty <input type="range" id="olp1_pct" min="0" max="100" step="0.1">
+      <input type="number" id="olp1_pct_n" min="0" max="100" step="0.1"><span class="unit">%</span></div>
+    <div class="row"><label>Level 2</label>
+      time <input type="number" id="olp2_time" min="0" max="19.6" step="0.1"><span class="unit">s</span>
+      duty <input type="range" id="olp2_pct" min="0" max="100" step="0.1">
+      <input type="number" id="olp2_pct_n" min="0" max="100" step="0.1"><span class="unit">%</span></div>
+    <div class="row"><label>Level 3</label>
+      time <input type="number" id="olp3_time" min="0" max="19.6" step="0.1"><span class="unit">s</span>
+      duty <input type="range" id="olp3_pct" min="0" max="100" step="0.1">
+      <input type="number" id="olp3_pct_n" min="0" max="100" step="0.1"><span class="unit">%</span></div>
+  </fieldset>
+
+  <fieldset id="flags" disabled>
+    <legend>Options</legend>
+    <div class="row"><label>Lose PPM Protection</label>
+      <select id="loseppm">
+        <option value="keep">Keep Position</option>
+        <option value="neutral">Go Neutral Position</option>
+      </select></div>
+    <div class="row"><label>Inversion</label>
+      <input type="checkbox" id="inversion"></div>
+  </fieldset>
+
+  <fieldset id="rescue" disabled style="display:none">
+    <legend>Rescue</legend>
+    <div class="row"><label>Reference frame</label>
+      <button id="btnRescue" class="ghost">Restore reference frame (B53DHS rescue)</button></div>
+    <div class="row"><label></label>
+      <span id="rescueStatus" class="unit" style="width:auto"></span></div>
+  </fieldset>
+
+  <fieldset id="firmware" disabled>
+    <legend>Firmware Update</legend>
+    <p class="warn">⚠ Flashing firmware that does not match the exact servo model
+    can permanently brick it. Do not disconnect the servo or dongle while the
+    update is running.</p>
+    <div class="row"><label>Firmware file (.sfw)</label>
+      <input type="file" id="fwFile" accept=".sfw"></div>
+    <div class="row"><label></label>
+      <button id="btnUpload" class="ghost" disabled>Upload Firmware</button>
+      <progress id="fwProgress" value="0" max="1" style="display:none"></progress>
+      <span id="fwStatus" class="unit" style="width:auto"></span></div>
+  </fieldset>
+
+  <details>
+    <summary>Parameter guide — what each setting does</summary>
+    <dl>
+      <dt>Travel Range R / L</dt>
+      <dd>Endpoint adjustment — how far the horn travels each way from neutral.
+        The two sides are independent. Reduce a side if the horn or linkage
+        binds at that end of travel.</dd>
+      <dt>Damping Factor</dt>
+      <dd>How strongly the servo brakes as it reaches the target. Higher values
+        stop overshoot and buzzing/hunting; too low and it bounces past the
+        target, too high and it feels lazy.</dd>
+      <dt>Sensitivity</dt>
+      <dd>How small a change in the input signal the servo reacts to (deadband).
+        Higher = responds to finer stick movements. The original software notes
+        values of 10 or below also enable extra protection.</dd>
+      <dt>PWM Power</dt>
+      <dd>Maximum motor drive power, as a percentage. 100% gives full torque and
+        speed; lowering it reduces current draw, heat and holding power.</dd>
+      <dt>Soft Start Level</dt>
+      <dd>On power-up the servo ramps gently to its position instead of snapping
+        to it. Higher level = slower, softer start. Useful when a model powers
+        up with a control surface deflected.</dd>
+      <dt>Overload Protection Levels 1–3</dt>
+      <dd>Three staged protections against stalls. If the servo is overloaded
+        continuously for a level's time, motor power is cut to that level's duty
+        percentage. Level 1 triggers first, level 3 last. Protects the motor and
+        electronics from burnout during a jam.</dd>
+      <dt>Lose PPM Protection</dt>
+      <dd>Failsafe when the control signal is lost: <b>Keep Position</b> holds
+        the last commanded position; <b>Go Neutral Position</b> returns the horn
+        to center.</dd>
+      <dt>Inversion</dt>
+      <dd>Reverses the servo's direction of rotation — use it instead of
+        reversing the channel in the radio.</dd>
+    </dl>
+  </details>
+
+  <details>
+    <summary>Raw parameter block</summary>
+    <p><code id="rawBlock">&mdash;</code></p>
+  </details>
+</div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const statusEl = $("status");
+
+/* ------------------------------------------------------------------ *
+ * AGFRC V3 dongle protocol over WebHID (verified against hardware).   *
+ * Dongle: VID 0x0471 PID 0x13AA, vendor page 0xFF00.                  *
+ * Report ID 0x04, 63 data bytes (wire byte0 = report ID is implicit). *
+ *   TX data: [cmd, 0, 0, ...payload]                                  *
+ *   RX data: [0x01, status, ...payload]   status 0xfa = no servo      *
+ * ------------------------------------------------------------------ */
+const VID = 0x0471, PID = 0x13AA, RID = 0x04, RLEN = 63;
+const CMD = {CONNECT: 0x91, POLL: 0x8A, READ: 0xCD, WRITE: 0xCB,
+             BOOT: 0x83, BOOTDATA: 0x81, RESET: 0x80};
+
+let dev = null;          // HIDDevice
+let connected = false;
+let pending = null;      // {resolve, timer} for the in-flight transaction
+let queue = Promise.resolve();
+
+// servo model (detected from the 0x8a poll ID bytes)
+// key = hex of the 6 ID bytes; unknown IDs fall back to the B44BLS2 layout
+const MODELS = {
+  "01 01 33 32 01 02": ["B44BLS2", "b44bls2"],
+  "01 01 03 01 01 01": ["B53DHS", "b53dhs"],
+};
+let modelName = "unknown", layout = "b44bls2";
+let namePage = null;     // last B53DHS name page (12 bytes, prefix/suffix preserved)
+let lastName = null;     // last B53DHS name read
+
+function onReport(ev) {
+  if (ev.reportId !== RID || !pending) return;
+  const p = pending;
+  pending = null;
+  clearTimeout(p.timer);
+  p.resolve(new Uint8Array(ev.data.buffer));
+}
+
+function transact(cmd, payload = [], timeout = 1000) {
+  return transactRaw(cmd, 0, 0, payload, timeout);
+}
+
+// like transact() but sets tx[1]/tx[2] (wire tx[2]/tx[3]) explicitly —
+// needed for the B53DHS paged read/write frames (address in wire tx[3])
+function transactRaw(cmd, b1, b2, payload = [], timeout = 1000) {
+  // serialize transactions
+  const run = () => new Promise((resolve, reject) => {
+    if (!dev) { reject(new Error("device not open")); return; }
+    pending = {resolve, timer: setTimeout(() => {
+      pending = null;
+      reject(new Error(`timeout waiting for response to cmd 0x${cmd.toString(16)}`));
+    }, timeout)};
+    const tx = new Uint8Array(RLEN);
+    tx[0] = cmd; tx[1] = b1; tx[2] = b2;
+    tx.set(payload, 3);
+    dev.sendReport(RID, tx).catch(e => {
+      if (pending) { clearTimeout(pending.timer); pending = null; reject(e); }
+    });
+  });
+  queue = queue.then(run, run);
+  return queue;
+}
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function servoConnect(pollTimeout = 5000) {
+  let rx = await transact(CMD.CONNECT, [0x20]);
+  if (rx.length < 5 || rx[0] !== 0x01 || rx[4] !== 0x01)
+    throw new Error("dongle handshake failed: " + hex(rx));
+  const deadline = Date.now() + pollTimeout;
+  for (;;) {
+    rx = await transact(CMD.POLL, [0x04]);
+    if (rx.length > 1 && rx[1] === 0x00) {
+      [modelName, layout] = MODELS[hex(rx.slice(2, 8))] || ["unknown", "b44bls2"];
+      return;
+    }
+    if (Date.now() >= deadline)
+      throw new Error("servo not detected — reseat servo / replug dongle");
+    await sleep(300);
+  }
+}
+
+async function servoRead(retries = 3, pauseMs = 200) {
+  if (layout === "b53dhs") return servoReadB53(retries, pauseMs);
+  for (let attempt = 0; attempt < retries; attempt++) {
+    const rx = await transact(CMD.READ, [0x2B]);
+    if (rx.length < 45 || rx[1] === 0xFA)
+      throw new Error("servo not detected — reseat servo / replug dongle");
+    const block = rx.slice(4, 26);
+    if (block.some(b => b) || attempt === retries - 1) {
+      const name = String.fromCharCode(...rx.slice(38, 45)
+        .filter(b => b >= 32 && b < 127)).trim();
+      return {...decodeBlock(block), servo_name: name, block: hex(block),
+              model: modelName, layout};
+    }
+    await sleep(200);
+  }
+}
+
+/* -- B53DHS (27-byte page-1 + paged name) ---------------------------- */
+
+async function servoReadB53(retries = 3, pauseMs = 200) {
+  for (let attempt = 0; attempt < retries; attempt++) {
+    const rx = await transact(CMD.READ, [0x2B]);
+    if (rx.length < 31 || rx[1] === 0xFA)
+      throw new Error("servo not detected — reseat servo / replug dongle");
+    const page1 = rx.slice(4, 31);
+    if (page1.some(b => b) || attempt === retries - 1) {
+      const name = await servoReadNameB53();
+      return {...decodePage1B53(page1), servo_name: name, block: hex(page1),
+              model: modelName, layout};
+    }
+    await sleep(pauseMs);
+  }
+}
+
+// paged name read (wire tx = cd 00 3b 24). Response payload (after the
+// stripped report ID): 01 00 3b 24 <13 bytes> = 5 prefix, 6 ASCII name,
+// 2 suffix. Falls back to the model name on any failure.
+async function servoReadNameB53() {
+  try {
+    const rx = await transactRaw(CMD.READ, 0x00, 0x3B, [0x24]);
+    if (rx.length < 17 || rx[1] !== 0x00 || rx[2] !== 0x3B)
+      throw new Error("bad name-page response");
+    namePage = rx.slice(4, 17);
+    const name = String.fromCharCode(...namePage.slice(5, 11)
+      .filter(b => b >= 32 && b < 127)).trim();
+    if (!name) throw new Error("no ASCII name in name page");
+    lastName = name;
+    return name;
+  } catch (e) {
+    namePage = null;  // stale pages must not be shown in the raw dump or written back
+    lastName = modelName;
+    return modelName;
+  }
+}
+
+// each B53DHS write frame is confirmed with rx[0]=0x01, rx[1]=0x00;
+// rx[1]=0x02 or 0xfa means the servo bus is down
+function checkWriteAck(rx) {
+  if (rx.length < 2 || rx[0] !== 0x01 || rx[1] !== 0x00)
+    throw new Error("write not acknowledged (servo bus down?) — reseat servo / replug dongle");
+}
+
+// 3-frame write: page-1, name page (only if changed), finalize
+async function servoWriteB53(page1, name) {
+  if (page1.length !== 27) throw new Error("page-1 block must be 27 bytes");
+  // 1. page-1 write: tx = cb 00 00 3b + 27 page-1 bytes
+  checkWriteAck(await transact(CMD.WRITE, [0x3B, ...page1]));
+  // 2. name page: tx = cb 00 3b 24 + 12 bytes (prefix/suffix preserved)
+  name = (name || "").trim();
+  if (name && name !== lastName) {
+    if (!namePage) throw new Error("no name page cached — read the servo first");
+    const np = Uint8Array.from(namePage);
+    const raw = new TextEncoder().encode(name).slice(0, 6);
+    np.fill(0, 5, 11);
+    np.set(raw, 5);
+    checkWriteAck(await transactRaw(CMD.WRITE, 0x00, 0x3B, [0x24, ...np]));
+    namePage = np;
+    lastName = name;
+  }
+  // 3. finalize: tx = 9a 16 67 14 14 03
+  checkWriteAck(await transactRaw(0x9A, 0x16, 0x67, [0x14, 0x14, 0x03]));
+  await sleep(150);  // let the servo commit before the next read
+}
+
+/* -- B53DHS rescue: restore the captured reference frame verbatim ---- */
+const B53_REF_PAGE1 = Uint8Array.from(
+  "3b d0 0b f6 c6 c6 7c ff 00 50 01 9f 3c 00 00 78 0c 8c 8c 8c 26 1e 1a 16 0a 00 50"
+  .split(" ").map(h => parseInt(h, 16)));
+const B53_REF_NAMEPAGE = Uint8Array.from(
+  "23 e3 00 00 00 42 35 33 44 48 53 2a 2a"
+  .split(" ").map(h => parseInt(h, 16)));
+// decoded reference values, for verifying the read-back after a restore
+const B53_REF_PARAMS = {travel_r: 198, travel_l: 198, neutral: -4,
+  soft_start: 11, damping: 415, sensitivity: 60, pwm: 54.9};
+
+// same 3-frame sequence as servoWriteB53, but writing the reference bytes
+// verbatim (NOT encoded from the UI fields); names the failed frame on error
+async function servoRescueB53() {
+  try {  // 1. page-1 write: tx = cb 00 00 3b + 27 reference bytes
+    checkWriteAck(await transact(CMD.WRITE, [0x3B, ...B53_REF_PAGE1]));
+  } catch (e) { throw new Error("frame 1 (page-1 write) failed: " + e.message); }
+  try {  // 2. name page write: tx = cb 00 3b 24 + 12 reference bytes
+    checkWriteAck(await transactRaw(CMD.WRITE, 0x00, 0x3B, [0x24, ...B53_REF_NAMEPAGE]));
+  } catch (e) { throw new Error("frame 2 (name page write) failed: " + e.message); }
+  try {  // 3. finalize: tx = 9a 16 67 14 14 03
+    checkWriteAck(await transactRaw(0x9A, 0x16, 0x67, [0x14, 0x14, 0x03]));
+  } catch (e) { throw new Error("frame 3 (finalize) failed: " + e.message); }
+}
+
+async function servoWrite(block) {
+  if (block.length !== 22) throw new Error("parameter block must be 22 bytes");
+  const rx = await transact(CMD.WRITE, [0x18, ...block]);
+  if (rx.length < 4 || rx[1] === 0xFA)
+    throw new Error("servo not detected — reseat servo / replug dongle");
+  await sleep(150);  // let the servo commit before the next read
+  if (!(rx.length >= 26 && rx[3] === 0x18 && rx.slice(4, 26).every((b, i) => b === block[i])))
+    throw new Error("write was not acknowledged by the servo");
+}
+
+/* WARNING: erases servo flash. .sfw must match the exact servo model. */
+async function servoUploadFirmware(fw, onProgress) {
+  let rx = await transact(CMD.BOOT, [0xFF, 0x55, 0xAA], 2000);
+  if (rx.length < 2 || rx[1] === 0xFA)
+    throw new Error("servo did not enter bootloader");
+  const bootVer = String.fromCharCode(...rx.slice(2, 14)
+    .filter(b => b >= 32 && b < 127)).trim();
+  rx = await transact(CMD.BOOT, [0xFF, 0x55, 0xAA], 5000);  // erase (no return)
+  if (rx.length < 2 || rx[1] === 0xFA)
+    throw new Error("flash erase was not acknowledged by the servo");
+  const total = Math.ceil(fw.length / 22);
+  for (let i = 0; i < total; i++) {
+    const chunk = new Uint8Array(22).fill(0xFF);
+    chunk.set(fw.slice(i * 22, (i + 1) * 22));
+    rx = await transact(CMD.BOOTDATA, chunk, 2000);
+    if (rx.length < 2 || rx[1] === 0xFA)
+      throw new Error(`write error at block ${i + 1}/${total} — do not power off; retry`);
+    onProgress(i + 1, total);
+    await sleep(5);
+  }
+  try { await transact(CMD.RESET, [1, 2, 3, 4, 5], 500); } catch {}
+  return bootVer;
+}
+
+/* -- parameter block encode/decode (22 bytes) ---------------------- */
+const pct = r => Math.round(r / 255 * 1000) / 10;
+const pctRaw = p => Math.max(0, Math.min(255, Math.round(p / 100 * 255)));
+const secs = r => Math.round(r / 13 * 10) / 10;
+const secsRaw = s => Math.max(0, Math.min(255, Math.round(s * 13)));
+const hex = b => Array.from(b, x => x.toString(16).padStart(2, "0")).join(" ");
+
+function decodeBlock(b) {
+  return {
+    damping: b[1], sensitivity: b[2], pwm: pct(b[6]),
+    travel_r: b[8], travel_l: b[9], soft_start: b[10],
+    olp1_pct: pct(b[12]), olp2_pct: pct(b[13]), olp3_pct: pct(b[14]),
+    olp1_time: secs(b[15]), olp2_time: secs(b[16]), olp3_time: secs(b[17]),
+    inversion: !!(b[20] & 0x01),
+    loseppm: (b[20] & 0x08) ? "neutral" : "keep",
+  };
+}
+
+function encodeBlock(old, p) {
+  const b = Uint8Array.from(old);
+  b[1] = p.damping & 0xFF; b[2] = p.sensitivity & 0xFF;
+  b[6] = pctRaw(p.pwm);
+  b[8] = p.travel_r & 0xFF; b[9] = p.travel_l & 0xFF;
+  b[10] = p.soft_start & 0xFF;
+  b[12] = pctRaw(p.olp1_pct); b[13] = pctRaw(p.olp2_pct); b[14] = pctRaw(p.olp3_pct);
+  b[15] = secsRaw(p.olp1_time); b[16] = secsRaw(p.olp2_time); b[17] = secsRaw(p.olp3_time);
+  b[20] = p.inversion ? (b[20] | 0x01) : (b[20] & ~0x01);
+  b[20] = p.loseppm === "neutral" ? (b[20] | 0x08) : (b[20] & ~0x08);
+  return b;
+}
+
+/* B53DHS page-1 (27 bytes). All unmapped bytes are unknown/preserved —
+ * carried over from the last read and never modified on write. */
+function decodePage1B53(b) {
+  return {
+    travel_r: b[4], travel_l: b[5], neutral: b[6] - 128,
+    soft_start: b[2], damping: (b[10] << 8) | b[11],
+    sensitivity: b[12], pwm: pct(b[17]),
+  };
+}
+
+function encodePage1B53(old, p) {
+  const b = Uint8Array.from(old);
+  b[4] = p.travel_r & 0xFF; b[5] = p.travel_l & 0xFF;
+  b[6] = (p.neutral + 128) & 0xFF;
+  b[2] = p.soft_start & 0xFF;
+  b[10] = (p.damping >> 8) & 0xFF; b[11] = p.damping & 0xFF;
+  b[12] = p.sensitivity & 0xFF;
+  b[17] = b[18] = b[19] = pctRaw(p.pwm);  // servo keeps three copies
+  return b;
+}
+
+/* -- UI ------------------------------------------------------------ */
+const PAIRS = ["travel_r","travel_l","damping","sensitivity","pwm","soft_start",
+               "olp1_pct","olp2_pct","olp3_pct","neutral"];
+// fields per model layout (B53DHS: no OLP / LosePPM / Inversion — the
+// official app never writes them on this model)
+const B44_FIELDS = PAIRS.filter(k => k !== "neutral");
+const B53_FIELDS = ["travel_r","travel_l","damping","sensitivity","pwm","soft_start","neutral"];
+for (const k of PAIRS) {
+  const s = $(k), n = $(k + "_n");
+  s.addEventListener("input", () => n.value = s.value);
+  n.addEventListener("input", () => s.value = n.value);
+}
+
+function setStatus(text, cls) {
+  statusEl.textContent = text;
+  statusEl.className = cls || "";
+}
+
+function setConnected(on) {
+  connected = on;
+  for (const fs of ["controls","olp","flags","rescue","firmware"]) $(fs).disabled = !on;
+  $("btnRead").disabled = !on;
+  $("btnWrite").disabled = !on;
+  $("btnUpload").disabled = !on || !$("fwFile").files.length;
+  $("btnConnect").textContent = on ? "Disconnect" : "Connect";
+  if (!on) { $("servoName").textContent = "—"; $("modelName").textContent = "—"; $("rawBlock").textContent = "—";
+             $("rescue").style.display = "none"; $("rescueStatus").textContent = "";
+             $("rawdump").value = ""; }
+}
+
+function applyParams(p) {
+  layout = p.layout || layout;
+  const isB53 = layout === "b53dhs";
+  for (const k of PAIRS) if (p[k] !== undefined) { $(k).value = p[k]; $(k + "_n").value = p[k]; }
+  for (const k of ["olp1_time","olp2_time","olp3_time"]) if (p[k] !== undefined) $(k).value = p[k];
+  $("loseppm").value = p.loseppm || "keep";
+  $("inversion").checked = !!p.inversion;
+  // B53DHS damping is a 16-bit value (e.g. 415)
+  $("damping").max = isB53 ? 1024 : 255;
+  $("damping_n").max = isB53 ? 65535 : 255;
+  $("neutralRow").style.display = isB53 ? "" : "none";
+  $("nameRow").style.display = isB53 ? "" : "none";
+  $("b53note").style.display = isB53 ? "" : "none";
+  $("rescue").style.display = isB53 ? "" : "none";
+  $("olp").style.display = isB53 ? "none" : "";
+  $("flags").style.display = isB53 ? "none" : "";
+  $("servoName").textContent = p.servo_name || "unknown";
+  $("modelName").textContent = p.model || modelName;
+  if (isB53) $("servo_name").value = p.servo_name || "";
+  $("rawBlock").textContent = p.block || "—";
+  // raw dump for remote diagnosis (updated on every successful read)
+  $("rawdump").value = isB53
+    ? "page1: " + (p.block || "") + " name: " + (namePage ? hex(namePage) : "-")
+    : "block: " + (p.block || "");
+}
+
+function collectParams() {
+  const p = {};
+  if (layout === "b53dhs") {
+    for (const k of B53_FIELDS) p[k] = parseFloat($(k).value);
+    p.name = $("servo_name").value;
+    return p;
+  }
+  for (const k of B44_FIELDS) p[k] = parseFloat($(k).value);
+  for (const k of ["olp1_time","olp2_time","olp3_time"]) p[k] = parseFloat($(k).value);
+  p.loseppm = $("loseppm").value;
+  p.inversion = $("inversion").checked;
+  return p;
+}
+
+async function guard(fn) {
+  try { await fn(); }
+  catch (e) { setStatus("error: " + e.message, "err"); }
+}
+
+$("btnConnect").addEventListener("click", () => guard(async () => {
+  if (connected) {
+    if (dev) await dev.close();
+    dev = null;
+    namePage = null; lastName = null;
+    setConnected(false);
+    setStatus("disconnected");
+    return;
+  }
+  if (!navigator.hid) {
+    setStatus("WebHID not available — use Chrome/Edge on localhost or HTTPS", "err");
+    return;
+  }
+  setStatus("select the AGFRC dongle…");
+  const devices = await navigator.hid.requestDevice({
+    filters: [{vendorId: VID, productId: PID}]});
+  if (!devices.length) { setStatus("no device selected"); return; }
+  dev = devices[0];
+  await dev.open();
+  dev.addEventListener("inputreport", onReport);
+  setStatus("connecting to servo…");
+  await servoConnect();
+  applyParams(await servoRead());
+  setConnected(true);
+  setStatus("connected", "ok");
+}));
+
+$("btnRead").addEventListener("click", () => guard(async () => {
+  applyParams(await servoRead());
+  setStatus("read OK", "ok");
+}));
+
+$("btnWrite").addEventListener("click", () => guard(async () => {
+  const cur = await servoRead();
+  const old = Uint8Array.from(cur.block.split(" ").map(h => parseInt(h, 16)));
+  const p = collectParams();
+  if (layout === "b53dhs") {
+    await servoWriteB53(encodePage1B53(old, p), p.name);
+    // B53DHS answers reads with zeros for many seconds while committing flash
+    // (B44BLS2 commits in ~150ms) — give it ~15s before declaring failure
+    setStatus("written — servo busy committing flash…");
+    const after = await servoRead(20, 750);
+    if (after.block.split(" ").every(h => h === "00")) {
+      setStatus("servo still committing flash — click Disconnect, then Connect and Read", "err");
+      return;
+    }
+    applyParams(after);
+  } else {
+    await servoWrite(encodeBlock(old, p));
+    applyParams(await servoRead());
+  }
+  setStatus("written to servo", "ok");
+}));
+
+$("btnRescue").addEventListener("click", () => guard(async () => {
+  const st = $("rescueStatus");
+  st.textContent = "writing reference frame…";
+  try {
+    await servoRescueB53();
+  } catch (e) { st.textContent = e.message; return; }  // names the failed frame
+  await sleep(500);  // let the servo commit before the verify read
+  // read back page-1 — after a write the B53DHS answers reads with zeros
+  // for many seconds (20+ observed) while committing flash; allow ~15s
+  let page1 = null;
+  for (let attempt = 1; attempt <= 20; attempt++) {
+    const rx = await transact(CMD.READ, [0x2B]);
+    if (rx.length < 31 || rx[1] === 0xFA)
+      throw new Error("servo not detected — reseat servo / replug dongle");
+    page1 = rx.slice(4, 31);
+    if (page1.some(b => b)) break;
+    if (attempt === 20) {
+      st.textContent = "restore acked OK, but the servo is still committing flash "
+        + "after 20 reads — click Disconnect, then Connect and Read";
+      return;
+    }
+    st.textContent = `servo busy committing flash… (read ${attempt}/20 returned zeros)`;
+    await sleep(750);
+  }
+  const d = decodePage1B53(page1);
+  const name = await servoReadNameB53();  // also refreshes the cached name page
+  applyParams({...d, servo_name: name, block: hex(page1), model: modelName, layout});
+  const bad = Object.entries(B53_REF_PARAMS)
+    .filter(([k, v]) => Math.abs(d[k] - v) >= 0.05)
+    .map(([k, v]) => `${k}=${d[k]} (ref ${v})`);
+  st.textContent = bad.length
+    ? "restore MISMATCH — " + bad.join(", ")
+    : "restore OK — travel 198/198, damping 415, soft start 11, PWM 54.9%, sens 60, neutral −4";
+  setStatus(bad.length ? "rescue restore mismatch" : "rescue restore OK",
+            bad.length ? "err" : "ok");
+}));
+
+$("fwFile").addEventListener("change", () => {
+  $("btnUpload").disabled = !connected || !$("fwFile").files.length;
+});
+
+function fwDone(text) {
+  $("fwProgress").style.display = "none";
+  $("fwStatus").textContent = text;
+  $("btnUpload").disabled = !connected || !$("fwFile").files.length;
+}
+
+$("btnUpload").addEventListener("click", () => guard(async () => {
+  const f = $("fwFile").files[0];
+  if (!f) return;
+  if (!confirm(`Flash "${f.name}" to the servo?\n\nOnly continue if this firmware matches the exact servo model — the wrong file can brick it.`)) return;
+  const fw = new Uint8Array(await f.arrayBuffer());
+  $("fwProgress").style.display = "";
+  $("fwProgress").value = 0;
+  $("fwStatus").textContent = "uploading…";
+  $("btnUpload").disabled = true;
+  const bootVer = await servoUploadFirmware(fw, (sent, total) => {
+    $("fwProgress").value = sent / total;
+    $("fwStatus").textContent = `${sent}/${total}`;
+  });
+  fwDone("done — power-cycle the servo");
+  setStatus(`firmware updated (${fw.length} bytes, boot ${bootVer || "?"}) — power-cycle the servo`, "ok");
+}));
+</script>
+</body>
+</html>

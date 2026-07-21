@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AGFRC V3 Servo Configurator</title>
+<style>
+  :root {
+    --bg: #121418; --panel: #1c1f26; --panel2: #23272f; --border: #333a45;
+    --text: #e6e9ee; --dim: #9aa3b0; --accent: #4da3ff; --ok: #4caf7d; --err: #e06060;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px; background: var(--bg); color: var(--text);
+    font: 14px/1.5 system-ui, sans-serif;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--dim); margin-bottom: 16px; }
+  .bar {
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 16px; margin-bottom: 16px;
+  }
+  button {
+    background: var(--accent); color: #08131f; border: 0; border-radius: 6px;
+    padding: 8px 16px; font-weight: 600; cursor: pointer;
+  }
+  button.ghost { background: var(--panel2); color: var(--text); border: 1px solid var(--border); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  #status { color: var(--dim); }
+  #status.ok { color: var(--ok); }
+  #status.err { color: var(--err); }
+  fieldset {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 16px 16px; margin: 0 0 16px;
+  }
+  legend { color: var(--dim); padding: 0 6px; }
+  .row { display: flex; align-items: center; gap: 12px; margin: 8px 0; }
+  .row label { width: 180px; flex: none; color: var(--text); }
+  .row input[type=range] { flex: 1; accent-color: var(--accent); }
+  .row input[type=number], .row input[type=text], .row select {
+    width: 90px; background: var(--panel2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px;
+  }
+  .row input[type=text] { width: 120px; }
+  .row select { width: auto; }
+  .row .unit { color: var(--dim); width: 30px; flex: none; }
+  fieldset:disabled { opacity: 0.45; }
+  details { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px 16px; margin-bottom: 16px; }
+  summary { cursor: pointer; color: var(--dim); }
+  code { color: var(--accent); word-break: break-all; }
+  .warn { color: #e0a060; }
+  progress { flex: 1; height: 14px; accent-color: var(--accent); }
+  dt { color: var(--text); font-weight: 600; margin-top: 8px; }
+  dd { margin: 2px 0 0 16px; color: var(--dim); }
+  input[type=file] { color: var(--dim); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>AGFRC V3 Servo Configurator</h1>
+  <div class="sub">Servo: <span id="servoName">&mdash;</span> &middot; Model: <span id="modelName">&mdash;</span></div>
+
+  <div class="bar">
+    <button id="btnConnect">Connect</button>
+    <button id="btnRead" class="ghost" disabled>Read</button>
+    <button id="btnWrite" disabled>Write</button>
+    <span id="status">disconnected</span>
+  </div>
+
+  <fieldset id="controls" disabled>
+    <legend>Parameters</legend>
+    <div class="row"><label>Travel Range R</label>
+      <input type="range" id="travel_r" min="0" max="255">
+      <input type="number" id="travel_r_n" min="0" max="255"><span class="unit"></span></div>
+    <div class="row"><label>Travel Range L</label>
+      <input type="range" id="travel_l" min="0" max="255">
+      <input type="number" id="travel_l_n" min="0" max="255"><span class="unit"></span></div>
+    <div class="row"><label>Damping Factor</label>
+      <input type="range" id="damping" min="0" max="255">
+      <input type="number" id="damping_n" min="0" max="255"><span class="unit"></span></div>
+    <div class="row"><label>Sensitivity</label>
+      <input type="range" id="sensitivity" min="0" max="255">
+      <input type="number" id="sensitivity_n" min="0" max="255"><span class="unit"></span></div>
+    <div class="row"><label>PWM Power</label>
+      <input type="range" id="pwm" min="0" max="100" step="0.1">
+      <input type="number" id="pwm_n" min="0" max="100" step="0.1"><span class="unit">%</span></div>
+    <div class="row"><label>Soft Start Level</label>
+      <input type="range" id="soft_start" min="0" max="16">
+      <input type="number" id="soft_start_n" min="0" max="16"><span class="unit"></span></div>
+    <div class="row" id="neutralRow" style="display:none"><label>Neutral</label>
+      <input type="range" id="neutral" min="-128" max="127">
+      <input type="number" id="neutral_n" min="-128" max="127"><span class="unit"></span></div>
+    <div class="row" id="nameRow" style="display:none"><label>Servo Name</label>
+      <input type="text" id="servo_name" maxlength="6"><span class="unit"></span></div>
+    <p class="warn" id="b53note" style="display:none">Overload Protection, Lose PPM,
+      Inversion and radio modes are not programmable on this model (ignored by official app).</p>
+  </fieldset>
+
+  <fieldset id="olp" disabled>
+    <legend>Overload Protection</legend>
+    <div class="row"><label>Level 1</label>
+      time <input type="number" id="olp1_time" min="0" max="19.6" step="0.1"><span class="unit">s</span>
+      duty <input type="range" id="olp1_pct" min="0" max="100" step="0.1">
+      <input type="number" id="olp1_pct_n" min="0" max="100" step="0.1"><span class="unit">%</span></div>
+    <div class="row"><label>Level 2</label>
+      time <input type="number" id="olp2_time" min="0" max="19.6" step="0.1"><span class="unit">s</span>
+      duty <input type="range" id="olp2_pct" min="0" max="100" step="0.1">
+      <input type="number" id="olp2_pct_n" min="0" max="100" step="0.1"><span class="unit">%</span></div>
+    <div class="row"><label>Level 3</label>
+      time <input type="number" id="olp3_time" min="0" max="19.6" step="0.1"><span class="unit">s</span>
+      duty <input type="range" id="olp3_pct" min="0" max="100" step="0.1">
+      <input type="number" id="olp3_pct_n" min="0" max="100" step="0.1"><span class="unit">%</span></div>
+  </fieldset>
+
+  <fieldset id="flags" disabled>
+    <legend>Options</legend>
+    <div class="row"><label>Lose PPM Protection</label>
+      <select id="loseppm">
+        <option value="keep">Keep Position</option>
+        <option value="neutral">Go Neutral Position</option>
+      </select></div>
+    <div class="row"><label>Inversion</label>
+      <input type="checkbox" id="inversion"></div>
+  </fieldset>
+
+  <fieldset id="firmware" disabled>
+    <legend>Firmware Update</legend>
+    <p class="warn">⚠ Flashing firmware that does not match the exact servo model
+    can permanently brick it. Do not disconnect the servo or dongle while the
+    update is running.</p>
+    <div class="row"><label>Firmware file (.sfw)</label>
+      <input type="file" id="fwFile" accept=".sfw"></div>
+    <div class="row"><label></label>
+      <button id="btnUpload" class="ghost" disabled>Upload Firmware</button>
+      <progress id="fwProgress" value="0" max="1" style="display:none"></progress>
+      <span id="fwStatus" class="unit" style="width:auto"></span></div>
+  </fieldset>
+
+  <details>
+    <summary>Parameter guide — what each setting does</summary>
+    <dl>
+      <dt>Travel Range R / L</dt>
+      <dd>Endpoint adjustment — how far the horn travels each way from neutral.
+        The two sides are independent. Reduce a side if the horn or linkage
+        binds at that end of travel.</dd>
+      <dt>Damping Factor</dt>
+      <dd>How strongly the servo brakes as it reaches the target. Higher values
+        stop overshoot and buzzing/hunting; too low and it bounces past the
+        target, too high and it feels lazy.</dd>
+      <dt>Sensitivity</dt>
+      <dd>How small a change in the input signal the servo reacts to (deadband).
+        Higher = responds to finer stick movements. The original software notes
+        values of 10 or below also enable extra protection.</dd>
+      <dt>PWM Power</dt>
+      <dd>Maximum motor drive power, as a percentage. 100% gives full torque and
+        speed; lowering it reduces current draw, heat and holding power.</dd>
+      <dt>Soft Start Level</dt>
+      <dd>On power-up the servo ramps gently to its position instead of snapping
+        to it. Higher level = slower, softer start. Useful when a model powers
+        up with a control surface deflected.</dd>
+      <dt>Overload Protection Levels 1–3</dt>
+      <dd>Three staged protections against stalls. If the servo is overloaded
+        continuously for a level's time, motor power is cut to that level's duty
+        percentage. Level 1 triggers first, level 3 last. Protects the motor and
+        electronics from burnout during a jam.</dd>
+      <dt>Lose PPM Protection</dt>
+      <dd>Failsafe when the control signal is lost: <b>Keep Position</b> holds
+        the last commanded position; <b>Go Neutral Position</b> returns the horn
+        to center.</dd>
+      <dt>Inversion</dt>
+      <dd>Reverses the servo's direction of rotation — use it instead of
+        reversing the channel in the radio.</dd>
+    </dl>
+  </details>
+
+  <details>
+    <summary>Raw parameter block</summary>
+    <p><code id="rawBlock">&mdash;</code></p>
+  </details>
+</div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const statusEl = $("status");
+let ws = null, connected = false;
+
+// slider <-> number pairing
+const PAIRS = ["travel_r","travel_l","damping","sensitivity","pwm","soft_start",
+               "olp1_pct","olp2_pct","olp3_pct","neutral"];
+// fields per model layout (B53DHS: no OLP / LosePPM / Inversion — the
+// official app never writes them on this model)
+const B44_FIELDS = PAIRS.filter(k => k !== "neutral");
+const B53_FIELDS = ["travel_r","travel_l","damping","sensitivity","pwm","soft_start","neutral"];
+let layout = "";
+for (const k of PAIRS) {
+  const s = $(k), n = $(k + "_n");
+  s.addEventListener("input", () => n.value = s.value);
+  n.addEventListener("input", () => s.value = n.value);
+}
+
+function setStatus(text, cls) {
+  statusEl.textContent = text;
+  statusEl.className = cls || "";
+}
+
+function setConnected(on) {
+  connected = on;
+  for (const fs of ["controls","olp","flags","firmware"]) $(fs).disabled = !on;
+  $("btnRead").disabled = !on;
+  $("btnWrite").disabled = !on;
+  $("btnUpload").disabled = !on || !$("fwFile").files.length;
+  $("btnConnect").textContent = on ? "Disconnect" : "Connect";
+  if (!on) { $("servoName").textContent = "—"; $("modelName").textContent = "—"; $("rawBlock").textContent = "—"; }
+}
+
+function applyParams(p) {
+  layout = p.layout || "";
+  const isB53 = layout === "b53dhs";
+  for (const k of PAIRS) if (p[k] !== undefined) { $(k).value = p[k]; $(k + "_n").value = p[k]; }
+  for (const k of ["olp1_time","olp2_time","olp3_time"]) if (p[k] !== undefined) $(k).value = p[k];
+  $("loseppm").value = p.loseppm || "keep";
+  $("inversion").checked = !!p.inversion;
+  // B53DHS damping is a 16-bit value (e.g. 415)
+  $("damping").max = isB53 ? 1024 : 255;
+  $("damping_n").max = isB53 ? 65535 : 255;
+  $("neutralRow").style.display = isB53 ? "" : "none";
+  $("nameRow").style.display = isB53 ? "" : "none";
+  $("b53note").style.display = isB53 ? "" : "none";
+  $("olp").style.display = isB53 ? "none" : "";
+  $("flags").style.display = isB53 ? "none" : "";
+  $("servoName").textContent = p.servo_name || "unknown";
+  $("modelName").textContent = p.model || "unknown";
+  if (isB53) $("servo_name").value = p.servo_name || "";
+  $("rawBlock").textContent = p.block || "—";
+}
+
+function collectParams() {
+  const p = {};
+  if (layout === "b53dhs") {
+    for (const k of B53_FIELDS) p[k] = parseFloat($(k).value);
+    p.name = $("servo_name").value;
+    return p;
+  }
+  for (const k of B44_FIELDS) p[k] = parseFloat($(k).value);
+  for (const k of ["olp1_time","olp2_time","olp3_time"]) p[k] = parseFloat($(k).value);
+  p.loseppm = $("loseppm").value;
+  p.inversion = $("inversion").checked;
+  return p;
+}
+
+function send(msg) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) { setStatus("no backend connection", "err"); return; }
+  ws.send(JSON.stringify(msg));
+}
+
+function connectWs() {
+  setStatus("connecting…");
+  ws = new WebSocket("ws://localhost:8093");
+  ws.onopen = () => send({cmd: "connect"});
+  ws.onclose = () => { setConnected(false); setStatus("disconnected"); ws = null; };
+  ws.onerror = () => setStatus("backend unreachable (is backend.py running?)", "err");
+  ws.onmessage = ev => {
+    let r;
+    try { r = JSON.parse(ev.data); } catch { return; }
+    if (!r.ok) {
+      setStatus("error: " + (r.error || "unknown"), "err");
+      if (r.cmd === "connect") setConnected(false);
+      if (r.cmd === "fw_upload") fwDone("failed: " + (r.error || "unknown"));
+      return;
+    }
+    if (r.cmd === "fw_progress") {
+      $("fwProgress").value = r.sent / r.total;
+      $("fwStatus").textContent = `${r.sent}/${r.total}`;
+      return;
+    }
+    if (r.params) applyParams(r.params);
+    if (r.cmd === "connect") { setConnected(true); setStatus("connected", "ok"); }
+    else if (r.cmd === "read") setStatus("read OK", "ok");
+    else if (r.cmd === "write") setStatus("written to servo", "ok");
+    else if (r.cmd === "fw_upload") {
+      fwDone("done — power-cycle the servo");
+      setStatus(`firmware updated (${r.bytes} bytes, boot ${r.boot_version || "?"}) — power-cycle the servo`, "ok");
+    }
+    else if (r.cmd === "disconnect") { setConnected(false); setStatus("disconnected"); }
+  };
+}
+
+$("btnConnect").addEventListener("click", () => {
+  if (connected && ws) send({cmd: "disconnect"});
+  else connectWs();
+});
+$("btnRead").addEventListener("click", () => send({cmd: "read"}));
+$("btnWrite").addEventListener("click", () => send({cmd: "write", params: collectParams()}));
+
+$("fwFile").addEventListener("change", () => {
+  $("btnUpload").disabled = !connected || !$("fwFile").files.length;
+});
+
+function fwDone(text) {
+  $("fwProgress").style.display = "none";
+  $("fwStatus").textContent = text;
+  $("btnUpload").disabled = !connected || !$("fwFile").files.length;
+}
+
+$("btnUpload").addEventListener("click", () => {
+  const f = $("fwFile").files[0];
+  if (!f) return;
+  if (!confirm(`Flash "${f.name}" to the servo?\n\nOnly continue if this firmware matches the exact servo model — the wrong file can brick it.`)) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    // strip the "data:...;base64," prefix
+    const b64 = String(reader.result).split(",")[1] || "";
+    $("fwProgress").style.display = "";
+    $("fwProgress").value = 0;
+    $("fwStatus").textContent = "uploading…";
+    $("btnUpload").disabled = true;
+    send({cmd: "fw_upload", name: f.name, data: b64});
+  };
+  reader.readAsDataURL(f);
+});
+</script>
+</body>
+</html>
