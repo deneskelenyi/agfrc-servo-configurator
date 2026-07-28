@@ -33,6 +33,11 @@ Notes on the B53DHS:
   back to the B44BLS2 layout — read first and compare with the official app
   before writing.
 
+For a broader list of AGFRC servos that are programmable with the AGF-SPV3
+dongle, see the community catalog page
+[`agfrc_servos.html`](agfrc_servos.html) (Amazon listings, approximate prices;
+not affiliated with AGFRC or Amazon).
+
 ## Quickstart
 
 ### WebHID app (recommended, no installation)
