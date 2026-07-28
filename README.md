@@ -35,8 +35,9 @@ Notes on the B53DHS:
 
 For a broader list of AGFRC servos that are programmable with the AGF-SPV3
 dongle, see the community catalog page
-[`agfrc_servos.html`](agfrc_servos.html) (Amazon listings, approximate prices;
-not affiliated with AGFRC or Amazon).
+[AGFRC programmable servos on Amazon](https://deneskelenyi.github.io/agfrc-servo-configurator/agfrc_servos.html)
+(approximate prices; not affiliated with AGFRC or Amazon —
+[source](agfrc_servos.html)).
 
 ## Quickstart
 
